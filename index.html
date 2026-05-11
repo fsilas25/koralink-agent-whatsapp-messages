@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KoraLink WhatsApp Analytics AI</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <header>
+        <div class="container header-content">
+            <div class="logo">
+                <i class="fa-solid fa-chart-pie"></i>
+                <span>KoraLink Analytics AI</span>
+            </div>
+            <div class="upload-zone" id="dropZone">
+                <input type="file" id="fileInput" accept=".txt" hidden>
+                <label for="fileInput" class="upload-btn">
+                    <i class="fa-solid fa-cloud-arrow-up"></i> Upload WhatsApp Chat (.txt)
+                </label>
+                <span id="fileName">No file selected</span>
+                <button id="analyzeBtn" disabled>Analyze Now</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="container">
+        <div id="loading" class="loading hidden">
+            <div class="spinner"></div>
+            <p>🤖 AI is analyzing your WhatsApp conversations...</p>
+            <p class="loading-subtext">This may take 1-3 minutes for large chats</p>
+        </div>
+
+        <div id="error" class="error hidden"></div>
+
+        <div id="dashboard" class="hidden">
+            <!-- Executive Summary -->
+            <section class="card summary-card">
+                <h2><i class="fa-solid fa-file-lines"></i> Executive Summary</h2>
+                <p id="execSummary">Loading...</p>
+            </section>
+
+            <!-- Key Metrics Grid -->
+            <div class="metrics-grid">
+                <div class="card metric-card">
+                    <h3><i class="fa-solid fa-comments"></i> Total Messages</h3>
+                    <div class="value" id="totalMsgs">0</div>
+                </div>
+                <div class="card metric-card">
+                    <h3><i class="fa-solid fa-users"></i> Unique Users</h3>
+                    <div class="value" id="uniqueUsers">0</div>
+                </div>
+                <div class="card metric-card">
+                    <h3><i class="fa-solid fa-face-smile"></i> Positive</h3>
+                    <div class="value" id="posSent">0%</div>
+                    <div class="bar-container"><div class="bar" id="posBar"></div></div>
+                </div>
+                <div class="card metric-card">
+                    <h3><i class="fa-solid fa-face-frown"></i> Negative</h3>
+                    <div class="value" id="negSent">0%</div>
+                    <div class="bar-container"><div class="bar neg" id="negBar"></div></div>
+                </div>
+            </div>
+
+            <!-- Issues & Escalations -->
+            <div class="two-col">
+                <section class="card">
+                    <h2><i class="fa-solid fa-triangle-exclamation"></i> Key Issues Identified</h2>
+                    <ul id="issuesList" class="list-group"></ul>
+                </section>
+                <section class="card">
+                    <h2><i class="fa-solid fa-bell"></i> Urgent Escalations</h2>
+                    <ul id="escalationsList" class="list-group urgent"></ul>
+                </section>
+            </div>
+
+            <!-- Feedback Sections -->
+            <div class="two-col">
+                <section class="card">
+                    <h2><i class="fa-solid fa-thumbs-up"></i> Positive Feedback</h2>
+                    <ul id="positiveList" class="list-group"></ul>
+                </section>
+                <section class="card">
+                    <h2><i class="fa-solid fa-thumbs-down"></i> Common Complaints</h2>
+                    <ul id="complaintsList" class="list-group"></ul>
+                </section>
+            </div>
+
+            <!-- Supervisor & Engagement -->
+            <div class="two-col">
+                <section class="card">
+                    <h2><i class="fa-solid fa-user-tie"></i> Supervisor Responsiveness</h2>
+                    <p><strong>Responders:</strong> <span id="supResponders">N/A</span></p>
+                    <p><strong>Avg. Quality:</strong> <span id="supQuality">N/A</span></p>
+                    <p><strong>Unresolved:</strong> <span id="supUnresolved">0</span></p>
+                </section>
+                <section class="card">
+                    <h2><i class="fa-solid fa-chart-line"></i> Weekly Trends</h2>
+                    <div id="weeklyTrends" class="trend-box"></div>
+                </section>
+            </div>
+
+            <!-- Recommendations -->
+            <section class="card">
+                <h2><i class="fa-solid fa-lightbulb"></i> Recommended Actions</h2>
+                <ol id="actionsList" class="actions-list"></ol>
+            </section>
+
+            <!-- Activity Chart -->
+            <section class="card">
+                <h2><i class="fa-solid fa-calendar-days"></i> Activity by Date (Top 7)</h2>
+                <div class="chart-container" id="activityChart"></div>
+            </section>
+
+            <!-- Keyword Tracking -->
+            <section class="card">
+                <h2><i class="fa-solid fa-magnifying-glass"></i> Issue Keyword Frequencies</h2>
+                <div id="keywordCloud" class="keyword-cloud"></div>
+            </section>
+        </div>
+    </main>
+
+    <footer>
+        <p>🔒 Powered by Gemini AI • Data processed locally • <a href="https://huggingface.co/spaces/faithsilas/koralink-agent-whatsapp-messages" target="_blank">Backend API</a></p>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
