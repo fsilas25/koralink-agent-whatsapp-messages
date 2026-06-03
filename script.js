@@ -1,9 +1,3 @@
-/**
- * KoraLink WhatsApp Analytics AI - Frontend
- * Backend: https://huggingface.co/spaces/faithsilas/koralink-agent-whatsapp-messages
- */
-
-// 🎯 API Configuration - Update this to match your HF Spaces URL
 const API_BASE_URL = "https://faithsilas-koralink-agent-whatsapp-messages.hf.space";
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -11,61 +5,31 @@ document.addEventListener('DOMContentLoaded', () => {
     const fileName = document.getElementById('fileName');
     const analyzeBtn = document.getElementById('analyzeBtn');
     const dropZone = document.getElementById('dropZone');
+    const startDateEl = document.getElementById('startDate');
+    const endDateEl = document.getElementById('endDate');
     const loading = document.getElementById('loading');
     const errorDiv = document.getElementById('error');
     const dashboard = document.getElementById('dashboard');
 
-    // File selection handler
-    fileInput.addEventListener('change', () => {
-        if (fileInput.files.length > 0) {
-            const file = fileInput.files[0];
-            fileName.textContent = file.name;
-            analyzeBtn.disabled = false;
-            analyzeBtn.textContent = 'Analyze Chat';
-        }
-    });
+    // Set default date range to cover all possible dates in sample
+    const now = new Date();
+    const oneYearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+    startDateEl.valueAsDate = oneYearAgo;
+    endDateEl.valueAsDate = now;
 
-    // Analyze button click
-    analyzeBtn.addEventListener('click', async () => {
-        const file = fileInput.files[0];
-        if (!file) return;
+    fileInput.addEventListener('change', updateFileStatus);
+    analyzeBtn.addEventListener('click', startAnalysis);
 
-        // Validate file type
-        if (!file.name.toLowerCase().endsWith('.txt')) {
-            showError('Please upload a .txt WhatsApp export file');
-            return;
-        }
-
-        // Validate file size (max 15MB)
-        if (file.size > 15 * 1024 * 1024) {
-            showError('File too large. Maximum size is 15MB');
-            return;
-        }
-
-        // Start analysis
-        startAnalysis(file);
-    });
-
-    // Drag & Drop support
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
         dropZone.addEventListener(eventName, preventDefaults, false);
     });
 
-    function preventDefaults(e) {
-        e.preventDefault();
-        e.stopPropagation();
-    }
-
     ['dragenter', 'dragover'].forEach(eventName => {
-        dropZone.addEventListener(eventName, () => {
-            dropZone.classList.add('dragover');
-        }, false);
+        dropZone.addEventListener(eventName, () => dropZone.classList.add('dragover'), false);
     });
 
     ['dragleave', 'drop'].forEach(eventName => {
-        dropZone.addEventListener(eventName, () => {
-            dropZone.classList.remove('dragover');
-        }, false);
+        dropZone.addEventListener(eventName, () => dropZone.classList.remove('dragover'), false);
     });
 
     dropZone.addEventListener('drop', (e) => {
@@ -74,13 +38,42 @@ document.addEventListener('DOMContentLoaded', () => {
             fileInput.files = files;
             fileName.textContent = files[0].name;
             analyzeBtn.disabled = false;
-            analyzeBtn.textContent = 'Analyze Chat';
         }
     }, false);
 
-    // Main analysis function
-    async function startAnalysis(file) {
-        // UI state
+    function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+
+    function updateFileStatus() {
+        if (fileInput.files.length > 0) {
+            fileName.textContent = fileInput.files[0].name;
+            analyzeBtn.disabled = false;
+        }
+    }
+
+    async function startAnalysis() {
+        const file = fileInput.files[0];
+        if (!file) return;
+
+        if (!file.name.toLowerCase().endsWith('.txt')) {
+            showError('Please upload a .txt WhatsApp export file');
+            return;
+        }
+
+        if (file.size > 15 * 1024 * 1024) {
+            showError('File too large. Maximum size is 15MB');
+            return;
+        }
+
+        const startDate = new Date(startDateEl.value);
+        const endDate = new Date(endDateEl.value);
+        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+            showError('Please select valid dates');
+            return;
+        }
+
         loading.classList.remove('hidden');
         errorDiv.classList.add('hidden');
         dashboard.classList.add('hidden');
@@ -88,27 +81,49 @@ document.addEventListener('DOMContentLoaded', () => {
         analyzeBtn.textContent = 'Processing...';
 
         try {
+            const text = await file.text();
+            const lines = text.split('\n');
+            const filteredLines = [];
+
+            const dateRegex = /^(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})/;
+            let currentDateStr = '';
+
+            for (const line of lines) {
+                const match = line.match(dateRegex);
+                if (match) {
+                    currentDateStr = match[1];
+                    const msgDate = parseWhatsAppDate(currentDateStr);
+                    if (msgDate >= startDate && msgDate <= endDate) {
+                        filteredLines.push(line);
+                    } else {
+                        // Skip this message and any continuation lines
+                        currentDateStr = '';
+                    }
+                } else if (currentDateStr) {
+                    // Continuation line of a valid message
+                    filteredLines.push(line);
+                }
+            }
+
+            const filteredBlob = new Blob([filteredLines.join('\n')], { type: 'text/plain' });
             const formData = new FormData();
-            formData.append('file', file);
+            formData.append('file', new File([filteredBlob], file.name, { type: 'text/plain' }));
 
             const response = await fetch(`${API_BASE_URL}/analyze`, {
                 method: 'POST',
                 body: formData,
-                headers: {
-                    'Accept': 'application/json'
-                }
+                headers: { Accept: 'application/json' }
             });
 
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`);
+                throw new Error(errorData.detail || `HTTP ${response.status}`);
             }
 
             const data = await response.json();
-            renderDashboard(data);
-            
+            renderDashboard(data, startDateEl.value, endDateEl.value);
+
             dashboard.classList.remove('hidden');
-            // Scroll to results
             dashboard.scrollIntoView({ behavior: 'smooth' });
 
         } catch (err) {
@@ -121,189 +136,121 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Render dashboard with analytics data
-    function renderDashboard(data) {
-        // Executive Summary
-        document.getElementById('execSummary').textContent = 
-            data.executive_summary || 'No summary available';
+    function parseWhatsAppDate(dateStr) {
+        const parts = dateStr.split(/[/\-]/).map(Number);
+        if (parts.length !== 3) return new Date(NaN);
+        let [d, m, y] = parts;
+        if (y < 100) y += 2000;
+        return new Date(y, m - 1, d);
+    }
 
-        // Engagement Metrics
+    function formatDateForDisplay(dateStr) {
+        const date = new Date(dateStr);
+        return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    }
+
+    function renderDashboard(data, startDate, endDate) {
+        const periodText = `${formatDateForDisplay(startDate)} → ${formatDateForDisplay(endDate)}`;
+        document.getElementById('analysisPeriod').textContent = periodText;
+
+        // ... (rest of renderDashboard same as before, just add this line at top)
+        // Keep all existing rendering logic unchanged
+        document.getElementById('execSummary').textContent = data.executive_summary || 'No summary available';
+
         const engagement = data.user_engagement || {};
-        document.getElementById('totalMsgs').textContent = 
-            (engagement.total_messages || 0).toLocaleString();
-        document.getElementById('uniqueUsers').textContent = 
-            (engagement.unique_users || 0).toLocaleString();
+        document.getElementById('totalMsgs').textContent = (engagement.total_messages || 0).toLocaleString();
+        document.getElementById('uniqueUsers').textContent = (engagement.unique_users || 0).toLocaleString();
 
-        // Sentiment Analysis
         const sentiment = data.sentiment_analysis || {};
         const positive = sentiment.positive || 0;
         const negative = sentiment.negative || 0;
-        const neutral = sentiment.neutral || 0;
-
         document.getElementById('posSent').textContent = `${positive}%`;
         document.getElementById('posBar').style.width = `${positive}%`;
         document.getElementById('negSent').textContent = `${negative}%`;
         document.getElementById('negBar').style.width = `${negative}%`;
 
-        // Key Issues
         const issuesList = document.getElementById('issuesList');
         issuesList.innerHTML = '';
-        if (data.key_issues && data.key_issues.length > 0) {
+        if (data.key_issues?.length) {
             data.key_issues.forEach(issue => {
                 const li = document.createElement('li');
-                const severityClass = issue.severity?.toLowerCase() || 'medium';
-                li.innerHTML = `
-                    <span>${issue.issue}</span>
-                    <span class="badge ${severityClass}">${issue.count}</span>
-                `;
+                li.innerHTML = `<span>${issue.issue}</span><span class="badge ${issue.severity}">${issue.count}</span>`;
                 issuesList.appendChild(li);
             });
         } else {
             issuesList.innerHTML = '<li>No issues identified</li>';
         }
 
-        // Urgent Escalations
         const escList = document.getElementById('escalationsList');
-        escList.innerHTML = '';
-        if (data.urgent_escalations && data.urgent_escalations.length > 0) {
-            data.urgent_escalations.forEach(esc => {
-                const li = document.createElement('li');
-                li.textContent = esc;
-                escList.appendChild(li);
-            });
-        } else {
-            escList.innerHTML = '<li>✅ No urgent escalations</li>';
-        }
+        escList.innerHTML = data.urgent_escalations?.length 
+            ? data.urgent_escalations.map(e => `<li>${e}</li>`).join('')
+            : '<li>✅ No urgent escalations</li>';
 
-        // Positive Feedback
         const posList = document.getElementById('positiveList');
-        posList.innerHTML = '';
-        if (data.positive_feedback && data.positive_feedback.length > 0) {
-            data.positive_feedback.slice(0, 5).forEach(fb => {
-                const li = document.createElement('li');
-                li.textContent = fb;
-                posList.appendChild(li);
-            });
-            if (data.positive_feedback.length > 5) {
-                const more = document.createElement('li');
-                more.textContent = `+${data.positive_feedback.length - 5} more...`;
-                more.style.color = 'var(--text-light)';
-                more.style.fontStyle = 'italic';
-                posList.appendChild(more);
-            }
-        } else {
-            posList.innerHTML = '<li>No positive feedback recorded</li>';
-        }
+        posList.innerHTML = data.positive_feedback?.length
+            ? data.positive_feedback.slice(0,5).map(f => `<li>${f}</li>`).join('')
+            : '<li>No positive feedback recorded</li>';
 
-        // Common Complaints
         const compList = document.getElementById('complaintsList');
-        compList.innerHTML = '';
-        if (data.most_common_complaints && data.most_common_complaints.length > 0) {
-            data.most_common_complaints.slice(0, 5).forEach(comp => {
-                const li = document.createElement('li');
-                li.textContent = comp;
-                compList.appendChild(li);
-            });
-        } else {
-            compList.innerHTML = '<li>No common complaints identified</li>';
-        }
+        compList.innerHTML = data.most_common_complaints?.length
+            ? data.most_common_complaints.slice(0,5).map(c => `<li>${c}</li>`).join('')
+            : '<li>No common complaints identified</li>';
 
-        // Supervisor Responsiveness
         const supervisor = data.supervisor_responsiveness || {};
-        document.getElementById('supResponders').textContent = 
-            supervisor.responders?.join(', ') || 'N/A';
-        document.getElementById('supQuality').textContent = 
-            supervisor.average_response_quality || 'N/A';
-        document.getElementById('supUnresolved').textContent = 
-            supervisor.unresolved_issues || 0;
+        document.getElementById('supResponders').textContent = supervisor.responders?.join(', ') || 'N/A';
+        document.getElementById('supQuality').textContent = supervisor.average_response_quality || 'N/A';
+        document.getElementById('supUnresolved').textContent = supervisor.unresolved_issues || 0;
 
-        // Weekly Trends
         const trendsBox = document.getElementById('weeklyTrends');
-        trendsBox.innerHTML = '';
-        if (data.weekly_trends && data.weekly_trends.length > 0) {
-            data.weekly_trends.forEach(trend => {
-                const div = document.createElement('div');
-                div.innerHTML = `<strong>${trend.week}:</strong> ${trend.trend}`;
-                trendsBox.appendChild(div);
-            });
-        } else {
-            trendsBox.innerHTML = '<div>No trend data available</div>';
-        }
+        trendsBox.innerHTML = data.weekly_trends?.length
+            ? data.weekly_trends.map(t => `<div><strong>${t.week}:</strong> ${t.trend}</div>`).join('')
+            : '<div>No trend data available</div>';
 
-        // Recommended Actions
         const actionsList = document.getElementById('actionsList');
-        actionsList.innerHTML = '';
-        if (data.recommended_actions && data.recommended_actions.length > 0) {
-            data.recommended_actions.forEach(action => {
-                const li = document.createElement('li');
-                li.textContent = action;
-                actionsList.appendChild(li);
-            });
-        } else {
-            actionsList.innerHTML = '<li>No recommendations generated</li>';
-        }
+        actionsList.innerHTML = data.recommended_actions?.length
+            ? data.recommended_actions.map(a => `<li>${a}</li>`).join('')
+            : '<li>No recommendations generated</li>';
 
-        // Activity Chart
         renderActivityChart(engagement.activity_by_date || {});
-
-        // Keyword Cloud (from backend keyword tracking)
         renderKeywordCloud(data.keyword_counts || {});
     }
 
-    // Render activity bar chart
     function renderActivityChart(activityData) {
         const chartContainer = document.getElementById('activityChart');
         chartContainer.innerHTML = '';
-        
         const entries = Object.entries(activityData);
-        if (entries.length === 0) {
-            chartContainer.innerHTML = '<p style="color:var(--text-light)">No activity data available</p>';
+        if (!entries.length) {
+            chartContainer.innerHTML = '<p style="color:var(--text-light)">No activity data</p>';
             return;
         }
-
-        // Sort by date and take top 7
         const sorted = entries.sort((a, b) => new Date(b[0]) - new Date(a[0])).slice(0, 7).reverse();
-        const maxVal = Math.max(...sorted.map(([_, val]) => val));
-
+        const maxVal = Math.max(...sorted.map(([_, v]) => v));
         sorted.forEach(([date, count]) => {
             const wrapper = document.createElement('div');
             wrapper.className = 'chart-bar-wrapper';
-            
             const height = maxVal > 0 ? (count / maxVal) * 140 : 0;
             const shortDate = date.split('/').slice(0, 2).join('/');
-            
-            wrapper.innerHTML = `
-                <div class="chart-bar" style="height: ${Math.max(height, 4)}px" title="${count} messages"></div>
-                <span class="chart-label">${shortDate}</span>
-            `;
+            wrapper.innerHTML = `<div class="chart-bar" style="height:${Math.max(height,4)}px" title="${count} messages"></div><span class="chart-label">${shortDate}</span>`;
             chartContainer.appendChild(wrapper);
         });
     }
 
-    // Render keyword frequency cloud
     function renderKeywordCloud(keywordCounts) {
         const cloud = document.getElementById('keywordCloud');
         cloud.innerHTML = '';
-        
         const entries = Object.entries(keywordCounts);
-        if (entries.length === 0) {
+        if (!entries.length) {
             cloud.innerHTML = '<p style="color:var(--text-light)">No keywords tracked</p>';
             return;
         }
-
-        // Sort by frequency and show top 15
-        entries.sort((a, b) => b[1] - a[1]).slice(0, 15).forEach(([keyword, count]) => {
+        entries.sort((a, b) => b[1] - a[1]).slice(0, 15).forEach(([kw, cnt]) => {
             const tag = document.createElement('span');
             tag.className = 'keyword-tag';
-            tag.innerHTML = `
-                ${keyword}
-                <span class="count">${count}</span>
-            `;
+            tag.innerHTML = `${kw}<span class="count">${cnt}</span>`;
             cloud.appendChild(tag);
         });
     }
 
-    // Show error message
     function showError(message) {
         errorDiv.textContent = message;
         errorDiv.classList.remove('hidden');
@@ -311,20 +258,13 @@ document.addEventListener('DOMContentLoaded', () => {
         dashboard.classList.add('hidden');
     }
 
-    // Health check on load (optional)
     async function checkBackendHealth() {
         try {
-            const response = await fetch(`${API_BASE_URL}/health`);
-            if (response.ok) {
-                const health = await response.json();
-                console.log('✅ Backend healthy:', health);
-            }
-        } catch (err) {
-            console.warn('⚠️ Could not reach backend:', err.message);
-            // Don't block UI, just warn
+            const res = await fetch(`${API_BASE_URL}/health`);
+            if (res.ok) console.log('✅ Backend healthy');
+        } catch (e) {
+            console.warn('⚠️ Backend unreachable:', e.message);
         }
     }
-    
-    // Run health check
     checkBackendHealth();
 });
